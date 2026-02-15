@@ -1,0 +1,135 @@
+#IMPORTING LIBRARIES
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+from IPython.display import HTML
+import os
+
+# Orbital parameters of Proxima Centauri b 
+a_AU = 0.0485
+a = a_AU * 1.496e11   # convert AU → meters
+P_days = 11.186
+P = P_days * 24 * 3600   # seconds
+e = 0.0
+inc = np.radians(30.0)
+raan = np.radians(0.0)
+argp = np.radians(0.0)
+G = 6.67430e-11
+M_sun = 1.98847e30
+M_star = 0.1221 * M_sun
+mu = G * M_star
+
+# Solve Kepler's Equation using Newton-Raphson iteration
+# M = Mean anomaly
+# e = Eccentricity
+# Returns E = Eccentric anomaly
+def solve_kepler(M, e, tol=1e-10, maxiter=100):
+   
+    M = np.array(M, dtype=float)
+    E = np.copy(M)
+    for _ in range(maxiter):
+        f = E - e * np.sin(E) - M
+        fprime = 1 - e * np.cos(E)
+        delta = f / fprime
+        E -= delta
+        if np.all(np.abs(delta) < tol):
+            break
+    return E
+
+def perifocal_to_inertial(r, nu, raan, inc, argp):
+  
+    x_pf = r * np.cos(nu)
+    y_pf = r * np.sin(nu)
+    z_pf = np.zeros_like(x_pf)
+
+    cosO = np.cos(raan); sinO = np.sin(raan)
+    cosi = np.cos(inc); sini = np.sin(inc)
+    cosw = np.cos(argp); sinw = np.sin(argp)
+
+    R11 = cosO * cosw - sinO * sinw * cosi
+    R12 = -cosO * sinw - sinO * cosw * cosi
+    R13 = sinO * sini
+
+    R21 = sinO * cosw + cosO * sinw * cosi
+    R22 = -sinO * sinw + cosO * cosw * cosi
+    R23 = -cosO * sini
+
+    R31 = sinw * sini
+    R32 = cosw * sini
+    R33 = cosi
+
+    x = R11 * x_pf + R12 * y_pf + R13 * z_pf
+    y = R21 * x_pf + R22 * y_pf + R23 * z_pf
+    z = R31 * x_pf + R32 * y_pf + R33 * z_pf
+
+    return x, y, z
+t = np.linspace(0, P, 500)
+n = 2 * np.pi / P
+M = n * t
+E = solve_kepler(M, e)
+nu = 2 * np.arctan2(np.sqrt(1+e) * np.sin(E/2),
+                    np.sqrt(1-e) * np.cos(E/2))
+r = a * (1 - e * np.cos(E))
+x, y, z = perifocal_to_inertial(r, nu, raan, inc, argp)
+
+# 3D Visualization of the Orbit
+fig = plt.figure(figsize=(8,6))
+ax = fig.add_subplot(111, projection="3d")
+ax.plot(x, y, z, lw=1, color="blue", label="Earth Orbit")
+ax.scatter(0, 0, 0, color="orange", s=140, label="Sun")
+ax.scatter(x[0], y[0], z[0], color="blue", s=40, label="Earth (start)")
+
+ax.set_xlabel("X (km)")
+ax.set_ylabel("Y (km)")
+ax.set_zlabel("Z (km)")
+ax.legend()
+plt.show()
+
+# 3D Animated Orbit Visualization
+fig = plt.figure(figsize=(7,7))
+ax = fig.add_subplot(111, projection='3d')
+ax.set_title("Orbit of Proxima Centauri b")
+
+ax.plot(x, y, z, 'gray', alpha=0.6)
+
+ax.scatter(0, 0, 0, color='yellow', s=100, label='Proxima Centauri')
+
+
+planet, = ax.plot([], [], [], 'o', color='blue', markersize=8, label='Proxima b')
+
+
+lim = a * 1.2
+ax.set_xlim(-lim, lim)
+ax.set_ylim(-lim, lim)
+ax.set_zlim(-lim, lim)
+
+ax.set_xlabel("x [m]")
+ax.set_ylabel("y [m]")
+ax.set_zlabel("z [m]")
+ax.legend()
+
+
+def init():
+    planet.set_data([], [])
+    planet.set_3d_properties([])
+    return planet,
+
+def update(frame):
+    planet.set_data([x[frame]], [y[frame]])
+    planet.set_3d_properties([z[frame]])
+    return planet,
+
+
+ani = FuncAnimation(fig, update, frames=len(x), init_func=init,
+                    interval=40, blit=True)
+
+HTML(ani.to_jshtml())
+
+from IPython.display import Image
+
+# Save the animation
+ani.save('animation.gif', writer='pillow')
+
+# Display the saved GIF
+Image(filename='animation.gif', width=600)
+
